@@ -1,0 +1,45 @@
+name: Robot Catalog Monitor
+
+on:
+  schedule:
+    # Запуск каждый день в 9:00 UTC (13:00 МСК)
+    - cron: '0 9 * * *'
+  workflow_dispatch: # Можно запустить вручную
+
+jobs:
+  update-robots:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🤖 Run Robot Catalog Update
+        run: |
+          echo "🔍 Запускаем поиск новых роботов..."
+          
+          response=$(curl -X POST \
+            "https://backend.composio.dev/api/v1/rube/recipes/rcp_5ajueyVK76BF/execute" \
+            -H "Content-Type: application/json" \
+            -H "x-api-key: ${{ secrets.COMPOSIO_API_KEY }}" \
+            -d '{
+              "api_url": "https://robototehnika.vercel.app/api/robots",
+              "api_key": "${{ secrets.ROBOT_API_KEY }}",
+              "search_mode": "news",
+              "max_robots_per_manufacturer": "10"
+            }' \
+            -w "\n%{http_code}" -s)
+          
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | head -n-1)
+          
+          echo "📊 Статус: $http_code"
+          echo "📄 Ответ: $body"
+          
+          if [ "$http_code" -eq 200 ] || [ "$http_code" -eq 201 ]; then
+            echo "✅ Каталог роботов успешно обновлён!"
+          else
+            echo "❌ Ошибка обновления каталога"
+            exit 1
+          fi
+
+      - name: 🎉 Complete
+        if: success()
+        run: echo "✨ Мониторинг завершён успешно!"
