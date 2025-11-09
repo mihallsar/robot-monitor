@@ -2,44 +2,83 @@ name: Robot Catalog Monitor
 
 on:
   schedule:
-    # Запуск каждый день в 9:00 UTC (13:00 МСК)
     - cron: '0 9 * * *'
-  workflow_dispatch: # Можно запустить вручную
+  workflow_dispatch:
 
 jobs:
   update-robots:
     runs-on: ubuntu-latest
     
     steps:
-      - name: 🤖 Run Robot Catalog Update
+      - name: 🤖 Update Robot Catalog
+        env:
+          COMPOSIO_KEY: ${{ secrets.COMPOSIO_API_KEY }}
+          ROBOT_KEY: ${{ secrets.ROBOT_API_KEY }}
         run: |
-          echo "🔍 Запускаем поиск новых роботов..."
+          echo "🔍 Начинаем поиск новых роботов..."
+          
+          # Проверяем ключи
+          if [ -z "$COMPOSIO_KEY" ]; then
+            echo "❌ COMPOSIO_API_KEY не установлен!"
+            exit 1
+          fi
+          
+          if [ -z "$ROBOT_KEY" ]; then
+            echo "❌ ROBOT_API_KEY не установлен!"
+            exit 1
+          fi
+          
+          echo "✅ API ключи проверены"
+          
+          # Используем правильный V3 endpoint
+          echo "🚀 Вызываем Recipe через API v3..."
           
           response=$(curl -X POST \
-            "https://backend.composio.dev/api/v1/rube/recipes/rcp_5ajueyVK76BF/execute" \
+            "https://backend.composio.dev/api/v3/actions/execute" \
             -H "Content-Type: application/json" \
-            -H "x-api-key: ${{ secrets.COMPOSIO_API_KEY }}" \
-            -d '{
-              "api_url": "https://robototehnika.vercel.app/api/robots",
-              "api_key": "${{ secrets.ROBOT_API_KEY }}",
-              "search_mode": "news",
-              "max_robots_per_manufacturer": "10"
-            }' \
-            -w "\n%{http_code}" -s)
+            -H "x-api-key: $COMPOSIO_KEY" \
+            -d "{
+              \"appName\": \"rube\",
+              \"actionName\": \"EXECUTE_RECIPE\",
+              \"input\": {
+                \"recipe_id\": \"rcp_5ajueyVK76BF\",
+                \"input_data\": {
+                  \"api_url\": \"https://robototehnika.vercel.app/api/robots\",
+                  \"api_key\": \"$ROBOT_KEY\",
+                  \"search_mode\": \"news\",
+                  \"max_robots_per_manufacturer\": \"10\"
+                }
+              }
+            }" \
+            -w "\nHTTP_STATUS:%{http_code}" \
+            -s)
           
-          http_code=$(echo "$response" | tail -n1)
-          body=$(echo "$response" | head -n-1)
+          http_code=$(echo "$response" | grep "HTTP_STATUS" | cut -d':' -f2)
+          body=$(echo "$response" | grep -v "HTTP_STATUS")
           
-          echo "📊 Статус: $http_code"
-          echo "📄 Ответ: $body"
+          echo "📊 HTTP Статус: $http_code"
+          echo "📄 Ответ сервера:"
+          echo "$body" | head -c 500
           
-          if [ "$http_code" -eq 200 ] || [ "$http_code" -eq 201 ]; then
+          if [ "$http_code" = "200" ] || [ "$http_code" = "201" ] || [ "$http_code" = "202" ]; then
+            echo ""
             echo "✅ Каталог роботов успешно обновлён!"
+            
+            # Пытаемся извлечь статистику
+            robots_count=$(echo "$body" | grep -o '"robots_published":[0-9]*' | cut -d':' -f2)
+            if [ ! -z "$robots_count" ]; then
+              echo "🤖 Добавлено роботов: $robots_count"
+            fi
+            
+            echo "🎉 Задача выполнена успешно!"
+            exit 0
           else
-            echo "❌ Ошибка обновления каталога"
+            echo ""
+            echo "❌ Ошибка при обновлении каталога"
+            echo "💡 HTTP код: $http_code"
             exit 1
           fi
 
-      - name: 🎉 Complete
+      - name: 🎉 Success
         if: success()
-        run: echo "✨ Мониторинг завершён успешно!"
+        run: echo "✨ Мониторинг завершён успешно!
