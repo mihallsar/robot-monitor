@@ -58,14 +58,6 @@ jobs:
                   }
               },
               {
-                  "url": "https://backend.composio.dev/api/v2/recipes/rcp_5ajueyVK76BF/execute",
-                  "payload": {
-                      "api_url": "https://robototehnika.vercel.app/api/robots",
-                      "api_key": robot_key,
-                      "search_mode": "news",
-                      "max_robots_per_manufacturer": "10"
-                  }
-              }
           ]
 
           headers = {
