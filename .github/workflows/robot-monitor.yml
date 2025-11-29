@@ -2,19 +2,19 @@ name: Robot Catalog Monitor
 
 on:
   schedule:
-    - cron: '0 9 * * *'
+    - cron: '0 */12 * * *'  # Каждые 12 часов (дважды в день)
   workflow_dispatch:
 
 jobs:
   update-robots:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
-      
+
       - name: Install dependencies
         run: pip install requests
 
@@ -39,75 +39,68 @@ jobs:
 
           print("✅ API ключи проверены")
 
-          # Пробуем разные endpoints
-          endpoints = [
-              {
-                  "url": "https://backend.composio.dev/api/v3/actions/execute",
-                  "payload": {
-                      "appName": "rube",
-                      "actionName": "EXECUTE_RECIPE",
-                      "input": {
-                          "recipe_id": "rcp_5ajueyVK76BF",
-                          "input_data": {
-                              "api_url": "https://robototehnika.vercel.app/api/robots",
-                              "api_key": robot_key,
-                              "search_mode": "news",
-                              "max_robots_per_manufacturer": "10"
-                          }
-                      }
+          # Вызываем recipe
+          url = "https://backend.composio.dev/api/v3/actions/execute"
+
+          payload = {
+              "appName": "rube",
+              "actionName": "EXECUTE_RECIPE",
+              "input": {
+                  "recipe_id": "rcp_5ajueyVK76BF",
+                  "input_data": {
+                      "api_url": "https://robototehnika.vercel.app/api/robots",
+                      "api_key": robot_key,
+                      "search_mode": "news",
+                      "max_robots_per_manufacturer": "10"
                   }
-              },
-              {
-          ]
+              }
+          }
 
           headers = {
               "Content-Type": "application/json",
               "x-api-key": composio_key
           }
 
-          success = False
+          print(f"\n🔄 Вызываем Composio Recipe API...")
 
-          for i, endpoint in enumerate(endpoints, 1):
-              print(f"\n🔄 Попытка {i}: {endpoint['url']}")
-              
-              try:
-                  response = requests.post(
-                      endpoint['url'],
-                      headers=headers,
-                      json=endpoint['payload'],
-                      timeout=300
-                  )
-                  
-                  print(f"📊 HTTP Статус: {response.status_code}")
-                  
-                  if response.status_code in [200, 201, 202]:
-                      print("✅ Успешный ответ!")
-                      try:
-                          data = response.json()
-                          print(f"📄 Ответ: {json.dumps(data, indent=2)[:500]}")
-                          
-                          # Пытаемся извлечь статистику
-                          if 'data' in data:
-                              stats = data.get('data', {})
-                              robots = stats.get('robots_published', 'N/A')
-                              print(f"🤖 Роботов добавлено: {robots}")
-                      except:
-                          print(f"📄 Ответ: {response.text[:500]}")
-                      
-                      print("🎉 Каталог роботов успешно обновлён!")
-                      success = True
-                      break
-                  else:
-                      print(f"⚠️ Код {response.status_code}: {response.text[:200]}")
-                      
-              except Exception as e:
-                  print(f"❌ Ошибка: {str(e)}")
+          try:
+              response = requests.post(
+                  url,
+                  headers=headers,
+                  json=payload,
+                  timeout=300
+              )
 
-          if not success:
-              print("\n❌ Все попытки не удались")
-              print("💡 Проверь правильность API ключей")
+              print(f"📊 HTTP Статус: {response.status_code}")
+
+              if response.status_code in [200, 201, 202]:
+                  print("✅ Успешный ответ!")
+                  try:
+                      data = response.json()
+                      print(f"📄 Ответ: {json.dumps(data, indent=2)[:500]}")
+
+                      # Извлекаем статистику
+                      if 'data' in data:
+                          stats = data.get('data', {})
+                          if 'data' in stats:
+                              stats = stats['data']
+                          robots = stats.get('robots_published', stats.get('published', 'N/A'))
+                          processed = stats.get('processed', 'N/A')
+                          print(f"🤖 Обработано роботов: {processed}")
+                          print(f"✨ Опубликовано: {robots}")
+                  except Exception as e:
+                      print(f"📄 Ответ: {response.text[:500]}")
+                      print(f"⚠️ Ошибка парсинга: {e}")
+
+                  print("🎉 Каталог роботов успешно обновлён!")
+              else:
+                  print(f"⚠️ Код {response.status_code}: {response.text[:300]}")
+                  exit(1)
+
+          except Exception as e:
+              print(f"❌ Ошибка: {str(e)}")
               exit(1)
-          else:
-              print("\n✨ Мониторинг завершён успешно!")
+
+          print("\n✨ Мониторинг завершён успешно!")
 
           EOF
